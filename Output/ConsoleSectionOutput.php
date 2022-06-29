@@ -50,7 +50,7 @@ class ConsoleSectionOutput extends StreamOutput
         }
 
         if ($lines) {
-            array_splice($this->content, -($lines * 2)); // Multiply lines by 2 to cater for each new line added between content
+            array_splice($this->content, -$lines);
         } else {
             $lines = $this->lines;
             $this->content = [];
@@ -80,12 +80,29 @@ class ConsoleSectionOutput extends StreamOutput
     /**
      * @internal
      */
-    public function addContent(string $input)
+    public function addContent(string $input, bool $newline = true)
     {
-        foreach (explode(\PHP_EOL, $input) as $lineContent) {
-            $this->lines += ceil($this->getDisplayLength($lineContent) / $this->terminal->getWidth()) ?: 1;
-            $this->content[] = $lineContent;
-            $this->content[] = \PHP_EOL;
+        $width = $this->terminal->getWidth();
+        $lines = explode(\PHP_EOL, $input);
+        $count = count($lines) - 1;
+        foreach ($lines as $i => $lineContent) {
+
+            if ($i < $count || $newline) {
+                $lineContent .= \PHP_EOL;
+            }
+
+            if ($lineContent !== '') {
+                if ($i === 0 && (false !== ($lastLine = end($this->content))) && substr($lastLine, -1) !== \PHP_EOL) {
+                    $this->lines -= ceil($this->getDisplayLength($lastLine) / $width) ?: 1;
+                    $lineContent = $lastLine . $lineContent;
+                    array_splice($this->content, -1, 1, $lineContent);
+                }
+                else {
+                    $this->content[] = $lineContent;
+                }
+
+                $this->lines += ceil($this->getDisplayLength($lineContent) / $width) ?: 1;
+            }
         }
     }
 
@@ -100,11 +117,13 @@ class ConsoleSectionOutput extends StreamOutput
             return;
         }
 
-        $erasedContent = $this->popStreamContentUntilCurrentSection();
+        $erasedContent = $this->popStreamContentUntilCurrentSection($this->lines > 0 ? 1 : 0);
 
-        $this->addContent($message);
+        $newContent = $this->lines ? end( $this->content ) . $message : $message;
 
-        parent::doWrite($message, true);
+        $this->addContent($message, $newline);
+
+        parent::doWrite($newContent, true);
         parent::doWrite($erasedContent, false);
     }
 
